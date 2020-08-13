@@ -1,0 +1,64 @@
+---
+title: "Prediction Assignment"
+author: "Luo Zhouyang"
+date: "2020/6/11"
+output: html_document
+---
+This is the prediction assignment of the practical machine learning course.
+
+```{r}
+options(warn=-1)
+library(caret)
+library(randomForest)
+library(Hmisc)
+library(foreach)
+library(doParallel)
+set.seed(622)
+```
+
+First, the csv file data was downloaded in the computer, and regular data analyses were conducted to give a glimpse of the data. The "#" mark was added to the commands to eliminate the output :
+
+```{r}
+setwd("C:/Users/win/Documents/R practice/Machine Learning")
+data <- read.csv("pml-training.csv", na.strings=c("#DIV/0!"))
+#summary(data)
+#describe(data)
+#sapply(data, class)
+#str(data)
+```
+
+Some useless features were eliminated such as "X", TIMESTAMPS, user_name which were not related to the behaviors. And columns' classes were forced to be as numeric and factor. Then we will select features only the column with a 100% completion rate:
+
+```{r}
+cleanData <- data
+for(i in c(8:ncol(cleanData)-1)) {cleanData[,i] = as.numeric(as.character(cleanData[,i]))}
+cleanData$classe <- as.factor(cleanData$classe)
+featuresnames <- colnames(cleanData[colSums(is.na(cleanData)) == 0])[-(1:7)]
+features <- cleanData[featuresnames]
+```
+
+
+We have now a dataframe "features which contains all the workable features. The dataset was then splitted in training and testing two part.
+
+```{r}
+xdata <- createDataPartition(y=features$classe, p=3/4, list=FALSE )
+training <- features[xdata,]
+testing <- features[-xdata,]
+```
+
+
+We can now train a classifier with the training data. To do that we will use parallelise the processing with the foreach and doParallel package : we call registerDoParallel to instantiate the configuration. (By default it's assign the half of the core available on your laptop, for me it's 4, because of hyperthreading) So we ask to process 4 random forest with 150 trees each and combine then to have a random forest model with a total of 600 trees.
+```{r}
+registerDoParallel()
+model <- foreach(ntree=rep(150, 4), .combine=combine, .packages='randomForest') %dopar% randomForest(training[-ncol(training)], training$classe, ntree=ntree)
+```
+
+To evaluate the model we will use the confusionmatrix method and we will focus on accuracy, sensitivity & specificity metrics :
+```{r}
+predictionsTr <- predict(model, newdata=training)
+confusionMatrix(predictionsTr,training$classe)
+predictionsTe <- predict(model, newdata=testing)
+confusionMatrix(predictionsTe,testing$classe)
+```
+
+As seen by the result of the confusionmatrix, the model is good and efficient because it has an accuracy of 0.997 and very good sensitivity & specificity values on the testing dataset. (the lowest value is 0.993 for the sensitivity of the class D)
